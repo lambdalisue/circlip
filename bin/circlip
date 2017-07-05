@@ -1,0 +1,231 @@
+#!/bin/bash
+#
+# Cross-platform clipboard script
+#
+# Author: lambdalisue <lambdalisue@hashnote.net>
+# License: MIT License
+#
+
+# Fail on unset variable anc command errors
+set -e -o pipefail
+
+# Prevent commands misbehaving due to locale differences
+export LC_ALL=C
+
+# Utilities {{{
+has() {
+  which $1 > /dev/null 2>&1
+}
+
+echoerr() {
+  echo $@ 1>&2
+}
+
+is_ssh_running() {
+  [ -n "${REMOTEHOST}${SSH_CONNECTION}" ]
+}
+
+is_tmux_running() {
+  [ -n "${TMUX}" ]
+}
+
+# NOTE:
+# pbcopy require 'reattach-to-user-namespace' in tmux
+if has 'pbcopy'; then
+  pbcopy() {
+    if is_tmux_running && has 'reattach-to-user-namespace'; then
+      command reattach-to-user-namespace pbcopy
+    else
+      command pbcopy
+    fi
+  }
+fi
+# }}}
+
+# Commands {{{
+command::usage() {
+  echoerr 'Usage: $PROGNAME {copy|paste|zsh-connect}'
+  exit 1
+}
+
+command::copy() {
+  if is_ssh_running && has 'lemonade'; then
+    lemonade copy $@
+  elif has 'pbcopy'; then
+    pbcopy $@
+  elif has 'xsel'; then
+    xsel --input $@
+  elif has 'xclip'; then
+    xclip -in -selection clipboard $@
+  fi
+}
+
+command::paste() {
+  if is_ssh_running && has 'lemonade'; then
+    lemonade paste $@
+  elif has 'pbpaste'; then
+    pbpaste $@
+  elif has 'xsel'; then
+    xsel --output $@
+  elif has 'xclip'; then
+    xclip -out -selection clipboard $@
+  fi
+}
+
+command::init() {
+  local shell=$1
+  if [[ "${shell:-$SHELL}" =~ zsh$ ]]; then
+    command::init::zsh
+  fi
+}
+
+command::init::zsh() {
+  cat <<EOF
+# Emacs {{{
+x-backward-kill-line() {
+  zle backward-kill-line
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-backward-kill-line
+
+x-backward-kill-word() {
+  zle backward-kill-word
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-backward-kill-word
+bindkey -M emacs '^W'   x-backward-kill-word
+bindkey -M emacs '\e^H' x-backward-kill-word
+bindkey -M emacs '\e^?' x-backward-kill-word
+
+x-copy-region-as-kill () {
+  zle copy-region-as-kill
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-copy-region-as-kill
+bindkey -M emacs '\eW' x-copy-region-as-kill
+bindkey -M emacs '\ew' x-copy-region-as-kill
+
+x-copy-prev-word () {
+  zle copy-prev-word
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-copy-prev-word
+bindkey -M emacs '\e^_' x-copy-prev-word
+
+x-kill-word() {
+  zle kill-word
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-kill-word
+bindkey -M emacs '\eD' x-kill-word
+bindkey -M emacs '\ed' x-kill-word
+
+x-kill-line() {
+  zle kill-line
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-kill-line
+bindkey -M emacs '^K' x-kill-line
+
+x-kill-region() {
+  zle kill-region
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-kill-region
+
+x-kill-buffer() {
+  zle kill-buffer
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-kill-buffer
+bindkey -M emacs '^X^K' x-kill-line
+
+x-kill-whole-line() {
+  zle kill-whole-line
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-kill-whole-line
+bindkey -M emacs '^U' x-kill-whole-line
+
+x-yank () {
+  CUTBUFFER=\$(circlip paste)
+  zle yank
+}
+zle -N x-yank
+bindkey -M emacs '^Y' x-yank
+# }}}
+
+# Vi {{{
+x-vi-backward-kill-word() {
+  zle vi-backward-kill-word
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-vi-backward-kill-word
+bindkey -M viins '^W' x-vi-backward-kill-word
+
+x-vi-kill-line() {
+  zle vi-kill-line
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-vi-kill-line
+bindkey -M viins '^U' x-vi-kill-line
+
+x-vi-kill-eol() {
+  zle vi-kill-eol
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-vi-kill-eol
+bindkey -M vicmd 'D' x-vi-kill-eol
+
+x-vi-put-before() {
+  CUTBUFFER=\$(circlip paste)
+  zle vi-put-before
+}
+zle -N x-vi-put-before
+bindkey -M vicmd 'P' x-vi-put-before
+
+x-vi-put-after() {
+  CUTBUFFER=\$(circlip paste)
+  zle vi-put-after
+}
+zle -N x-vi-put-after
+bindkey -M vicmd 'p' x-vi-put-after
+
+x-vi-yank() {
+  zle vi-yank
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-vi-yank
+bindkey -M vicmd 'y' x-vi-yank
+
+x-vi-yank-whole-line() {
+  zle vi-yank-whole-line
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-vi-yank-whole-line
+bindkey -M vicmd 'Y' x-vi-yank-whole-line
+
+x-vi-yank-eol() {
+  zle vi-yank-eol
+  print -rn \$CUTBUFFER | circlip copy
+}
+zle -N x-vi-yank-eol
+# }}}
+EOF
+}
+
+# }}}
+
+PROGNAME=$0
+
+if [ $# -eq 0 ]; then
+  command::usage
+fi
+
+COMMAND=$1; shift 1
+case $COMMAND in
+  copy) command::copy $@ ;;
+  paste) command::paste $@ ;;
+  init) command::init $@ ;;
+  *) command::usage $@ ;;
+esac
