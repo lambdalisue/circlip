@@ -9,9 +9,6 @@
 # Fail on unset variable anc command errors
 set -e -o pipefail
 
-# Prevent commands misbehaving due to locale differences
-export LC_ALL=C
-
 # Utilities {{{
 has() {
   which $1 > /dev/null 2>&1
